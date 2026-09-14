@@ -1,318 +1,244 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-<title>three.js ar - hit test</title>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<link type="text/css" rel="stylesheet" href="main.css">
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-</head>
-<body>
+	<head>
+		<title>three.js ar - hit test</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+		<link type="text/css" rel="stylesheet" href="main.css">
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+	</head>
+	<body>
 
-<div id="content">
-    <div id="mySidenav" class="sidenav">
-        <a href="javascript:void(0)" class="closebtn" onclick="closeNav()">&times;</a>
-        <a class="ar-object" id="1" href="#">item_1</a>
-        <a class="ar-object" id="2" href="#">item_2</a>
-        <a class="ar-object" id="3" href="#">item_3</a>
-        <a class="ar-object" id="4" href="#">item_4</a>
-    </div>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
 
-    <div id="container" style="position: fixed;"></div>
+		<script type="module">
 
-    <span style="font-size:30px;cursor:pointer;position: absolute;" onclick="openNav()">&#9776; open</span>
+			import * as THREE from 'three';
+			import { ARButton } from 'three/addons/webxr/ARButton.js';
+			import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/controls/OrbitControls.js';
+			import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/loaders/GLTFLoader.js';
 
-    <button type="button" id="place-button">PLACE</button>
-</div>
+			let container;
+			let camera, scene, renderer;
+			let controller1, controller2;
+			let reticle;
+			let currentObject, controls;
+			let currentUrl = 'models/1.glb';
 
-<script>
-    function openNav() {
-        document.getElementById("mySidenav").style.width = "250px";
-    }
-    function closeNav() {
-        document.getElementById("mySidenav").style.width = "0";
-    }
-    window.openNav = openNav;
-    window.closeNav = closeNav;
-</script>
+			let hitTestSource = null;
+			let hitTestSourceRequested = false;
 
-<script type="importmap">
-{
-    "imports": {
-        "three": "./build/three.module.js",
-        "three/addons/": "./jsm/"
-    }
-}
-</script>
+			init();
 
-<script type="module">
+			function init() {
 
-import * as THREE from "three";
-import { ARButton } from "three/addons/webxr/ARButton.js";
-import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/controls/OrbitControls.js";
-import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js";
+				container = document.getElementById( 'container' );
+				document.body.appendChild( container );
 
-let container;
-let camera, scene, renderer;
-let reticle, current_object, controls;
+				scene = new THREE.Scene();
 
-let hitTestSource = null;
-let hitTestSourceRequested = false;
+				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 20 );
 
-let touchDown, touchX, touchY, deltaX, deltaY;
+				const light = new THREE.HemisphereLight( 0xffffff, 0xbbbbff, 3 );
+				light.position.set( 0.5, 1, 0.25 );
+				scene.add( light );
 
-let current_url = "1"; // id de l'objet chargé par défaut au démarrage (fichier 3d/1.glb)
+				//
 
-init();
+				renderer = new THREE.WebGLRenderer( { antialias: true, alpha: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setAnimationLoop( animate );
+				renderer.xr.enabled = true;
+				container.appendChild( renderer.domElement );
 
-function init() {
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.target.set( 0, 0, - 0.5 );
+				controls.enableDamping = true;
+				controls.addEventListener( 'change', render );
 
-    container = document.createElement( 'div' );
-    document.body.appendChild( container );
+				//
 
-    scene = new THREE.Scene();
+				const arButton = ARButton.createButton( renderer, {
+                requiredFeatures: [ 'hit-test' ],
+                optionalFeatures: [ 'dom-overlay' ],
+                domOverlay: { root: document.body }
+                } );
+				document.body.appendChild( arButton );
 
-    camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 20 );
+				$( '#ARButton' ).click( function () {
+					if ( currentObject ) currentObject.visible = false;
+				} );
 
-    var directionalLight = new THREE.DirectionalLight( 0xdddddd, 1 );
-    directionalLight.position.set( 0, 0, 1 ).normalize();
-    scene.add( directionalLight );
+				//
 
-    var ambientLight = new THREE.AmbientLight( 0x222222 );
-    scene.add( ambientLight );
+				function onSelect() {
 
-    renderer = new THREE.WebGLRenderer( { antialias: true, alpha: true } );
-    renderer.setPixelRatio( window.devicePixelRatio );
-    renderer.setSize( window.innerWidth, window.innerHeight );
-    renderer.setAnimationLoop( animate );
-    renderer.xr.enabled = true;
-    container.appendChild( renderer.domElement );
+					if ( ! reticle.visible || ! currentObject ) return;
 
-    controls = new OrbitControls( camera, renderer.domElement );
-    controls.addEventListener( 'change', render );
-    controls.minDistance = 2;
-    controls.maxDistance = 10;
-    controls.target.set( 0, 0, -0.2 );
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
+					const object = currentObject.clone();
+					object.position.setFromMatrixPosition( reticle.matrix );
+					object.visible = true;
+					scene.add( object );
+					render();
 
-    // AR SETUP
-    let options = {
-        requiredFeatures: [ 'hit-test' ],
-        optionalFeatures: [ 'dom-overlay' ],
-    };
-    options.domOverlay = { root: document.getElementById( 'content' ) };
-    document.body.appendChild( ARButton.createButton( renderer, options ) );
+				}
 
-    $( "#ARButton" ).click( function () {
-        if ( current_object ) {
-            current_object.visible = false;
-            current_object.position.set( 0, 0, - 0.5 );
-        }
-        render();
-    } );
+				controller1 = renderer.xr.getController( 0 );
+				controller1.addEventListener( 'select', onSelect );
+				scene.add( controller1 );
 
-    $( "#place-button" ).click( function () {
-        arPlace();
-    } );
+				controller2 = renderer.xr.getController( 1 );
+				controller2.addEventListener( 'select', onSelect );
+				scene.add( controller2 );
 
-    $( ".ar-object" ).click( function () {
-        current_url = $( this ).attr( "id" );
-        if ( !renderer.xr.isPresenting ) {
-            if ( current_object != null ) {
-                scene.remove( current_object );
-            }
-            loadModel( current_url );
-        }
-    } );
+				reticle = new THREE.Mesh(
+					new THREE.RingGeometry( 0.15, 0.2, 32 ).rotateX( - Math.PI / 2 ),
+					new THREE.MeshBasicMaterial()
+				);
+				reticle.matrixAutoUpdate = false;
+				reticle.visible = false;
+				scene.add( reticle );
 
-    reticle = new THREE.Mesh(
-        new THREE.RingGeometry( 0.15, 0.2, 32 ).rotateX( -Math.PI / 2 ),
-        new THREE.MeshBasicMaterial()
-    );
-    reticle.matrixAutoUpdate = false;
-    reticle.visible = false;
-    scene.add( reticle );
+				//
 
-    // charge un premier objet par défaut au démarrage
-    loadModel( current_url );
+				window.addEventListener( 'resize', onWindowResize );
 
-    renderer.domElement.addEventListener( 'touchstart', function ( e ) {
-        e.preventDefault();
-        touchDown = true;
-        touchX = e.touches[ 0 ].pageX;
-        touchY = e.touches[ 0 ].pageY;
-    }, false );
-
-    renderer.domElement.addEventListener( 'touchend', function ( e ) {
-        e.preventDefault();
-        touchDown = false;
-    }, false );
-
-    renderer.domElement.addEventListener( 'touchmove', function ( e ) {
-        e.preventDefault();
-        if ( !touchDown ) {
-            return;
-        }
-        deltaX = e.touches[ 0 ].pageX - touchX;
-        deltaY = e.touches[ 0 ].pageY - touchY;
-        touchX = e.touches[ 0 ].pageX;
-        touchY = e.touches[ 0 ].pageY;
-        rotateObject();
-    }, false );
-
-    window.addEventListener( 'resize', onWindowResize );
-
-}
-
-function loadModel( model ) {
-
-    if ( current_object ) {
-        scene.remove( current_object );
-        current_object.traverse( function ( child ) {
-            if ( child.geometry ) child.geometry.dispose();
-            if ( child.material ) {
-                if ( Array.isArray( child.material ) ) {
-                    child.material.forEach( function ( material ) {
-                        material.dispose();
-                    } );
-                } else {
-                    child.material.dispose();
-                }
-            }
-        } );
-        current_object = null;
-    }
-
-    var loader = new GLTFLoader().setPath( 'models/' );
-    loader.load( model + ".glb", function ( glb ) {
-
-        current_object = glb.scene;
-        current_object.visible = !renderer.xr.isPresenting;
-        current_object.position.set( 0, 0, - 0.5 );
-        current_object.rotation.set( 0, 0, 0 );
-        if ( current_object.parent !== scene ) {
-            scene.add( current_object );
-        }
-
-        var box = new THREE.Box3();
-        box.setFromObject( current_object );
-        if ( !box.isEmpty() ) {
-            box.getCenter( controls.target );
-        }
-
-        controls.update();
-        render();
-
-    }, undefined, function ( error ) {
-        console.error( 'Erreur de chargement du modèle', model, error );
-    } );
-
-}
-
-function arPlace() {
-    if ( !current_object ) {
-        loadModel( current_url );
-        return;
-    }
-
-    if ( reticle && reticle.visible ) {
-        if ( current_object.parent !== scene ) {
-            scene.add( current_object );
-        }
-
-        const worldPosition = new THREE.Vector3();
-        reticle.getWorldPosition( worldPosition );
-        current_object.position.copy( worldPosition );
-        current_object.position.y += 0.05;
-        current_object.visible = true;
-        current_object.updateMatrixWorld( true );
-        render();
-    }
-}
-
-function rotateObject() {
-    if ( current_object && reticle.visible ) {
-        current_object.rotation.y += deltaX / 100;
-    }
-}
-
-function onWindowResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize( window.innerWidth, window.innerHeight );
-}
-
-function render() {
-    renderer.render( scene, camera );
-}
-
-function animate( timestamp, frame ) {
-
-    if ( frame ) {
-
-        const referenceSpace = renderer.xr.getReferenceSpace();
-        const session = renderer.xr.getSession();
-
-        if ( hitTestSourceRequested === false ) {
-
-            session.requestReferenceSpace( 'viewer' ).then( function ( referenceSpace ) {
-
-                session.requestHitTestSource( { space: referenceSpace } ).then( function ( source ) {
-
-                    hitTestSource = source;
-
+				$( '.ar-object' ).on( 'click', function ( event ) {
+                    event.preventDefault();
+                    currentUrl = $( this ).attr( 'data-model' );
+				loadModel( currentUrl );
                 } );
 
-            } );
+				loadModel( currentUrl );
 
-            session.addEventListener( 'end', function () {
+			}
 
-                hitTestSourceRequested = false;
-                hitTestSource = null;
+			function loadModel( modelUrl ) {
 
-                reticle.visible = false;
+				if ( currentObject ) scene.remove( currentObject );
 
-                var box = new THREE.Box3();
-                box.setFromObject( current_object );
-                box.center( controls.target );
+				new GLTFLoader().load( modelUrl, function ( glb ) {
+					currentObject = glb.scene;
+					currentObject.visible = false;
 
-                document.getElementById( "place-button" ).style.display = "none";
+					const box = new THREE.Box3().setFromObject( currentObject );
+					const size = box.getSize( new THREE.Vector3() );
+					const maxSize = Math.max( size.x, size.y, size.z );
+					if ( maxSize > 0 ) currentObject.scale.setScalar( 0.5 / maxSize );
 
-            } );
+					scene.add( currentObject );
+					render();
+				}, undefined, function ( error ) {
+					console.error( 'Impossible de charger le modele :', modelUrl, error );
+				} );
 
-            hitTestSourceRequested = true;
+			}
 
-        }
+			function onWindowResize() {
 
-        if ( hitTestSource ) {
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
 
-            const hitTestResults = frame.getHitTestResults( hitTestSource );
+				renderer.setSize( window.innerWidth, window.innerHeight );
 
-            if ( hitTestResults.length ) {
+			}
 
-                const hit = hitTestResults[ 0 ];
+			//
 
-                reticle.visible = true;
-                reticle.matrix.fromArray( hit.getPose( referenceSpace ).transform.matrix );
+			function animate( timestamp, frame ) {
 
-                document.getElementById( "place-button" ).style.display = "block";
+				if ( frame ) {
 
-            } else {
+					const referenceSpace = renderer.xr.getReferenceSpace();
+					const session = renderer.xr.getSession();
 
-                reticle.visible = false;
-                document.getElementById( "place-button" ).style.display = "none";
+					if ( hitTestSourceRequested === false ) {
 
-            }
+						session.requestReferenceSpace( 'viewer' ).then( function ( referenceSpace ) {
 
-        }
+							session.requestHitTestSource( { space: referenceSpace } ).then( function ( source ) {
 
-    }
+								hitTestSource = source;
 
-    renderer.render( scene, camera );
+							} );
 
+						} );
+
+						session.addEventListener( 'end', function () {
+
+							hitTestSourceRequested = false;
+							hitTestSource = null;
+							reticle.visible = false;
+
+							if ( currentObject ) {
+								const box = new THREE.Box3().setFromObject( currentObject );
+								box.getCenter( controls.target );
+								controls.update();
+							}
+
+						} );
+
+						hitTestSourceRequested = true;
+
+					}
+
+					if ( hitTestSource ) {
+
+						const hitTestResults = frame.getHitTestResults( hitTestSource );
+
+						if ( hitTestResults.length ) {
+
+							const hit = hitTestResults[ 0 ];
+
+							reticle.visible = true;
+							reticle.matrix.fromArray( hit.getPose( referenceSpace ).transform.matrix );
+
+						} else {
+
+							reticle.visible = false;
+
+						}
+
+					}
+
+				}
+
+				renderer.render( scene, camera );
+
+			}
+
+			function render() {
+				renderer.render( scene, camera );
+			}
+
+		</script>
+		<div id="container"></div>
+		<div id="mySidenav" class="sidenav">
+			<a href="javascript:void(0)" class="closebtn" onclick="closeNav()">&times;</a>
+			<a class="ar-object" data-model="models/1.glb" href="#">Objet 1</a>
+			<a class="ar-object" data-model="models/2.glb" href="#">Objet 2</a>
+			<a class="ar-object" data-model="models/3.glb" href="#">Objet 3</a>
+			<a class="ar-object" data-model="models/4.glb" href="#">Objet 4</a>
+		</div>
+
+		<button class="menu-button" onclick="openNav()" aria-label="Ouvrir le menu">&#9776; <span>Objets</span></button>
+
+<script>
+function openNav() {
+  document.getElementById("mySidenav").style.width = "250px";
 }
 
+function closeNav() {
+  document.getElementById("mySidenav").style.width = "0";
+}
 </script>
-</body>
+	</body>
 </html>
