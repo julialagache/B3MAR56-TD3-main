@@ -49,20 +49,19 @@
 
 import * as THREE from "three";
 import { ARButton } from "three/addons/webxr/ARButton.js";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
+import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/controls/OrbitControls.js";
+import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js";
 
 let container;
 let camera, scene, renderer;
-let reticle, pmremGenerator, current_object, controls, envmap;
+let reticle, current_object, controls;
 
 let hitTestSource = null;
 let hitTestSourceRequested = false;
 
 let touchDown, touchX, touchY, deltaX, deltaY;
 
-let current_url = "1"; // id de l'objet chargé par défaut au démarrage (adapte selon tes fichiers dans 3d/)
+let current_url = "1"; // id de l'objet chargé par défaut au démarrage (fichier 3d/1.glb)
 
 init();
 
@@ -89,9 +88,6 @@ function init() {
     renderer.xr.enabled = true;
     container.appendChild( renderer.domElement );
 
-    pmremGenerator = new THREE.PMREMGenerator( renderer );
-    pmremGenerator.compileEquirectangularShader();
-
     controls = new OrbitControls( camera, renderer.domElement );
     controls.addEventListener( 'change', render );
     controls.minDistance = 2;
@@ -109,7 +105,11 @@ function init() {
     document.body.appendChild( ARButton.createButton( renderer, options ) );
 
     $( "#ARButton" ).click( function () {
-        if ( current_object ) current_object.visible = false;
+        if ( current_object ) {
+            current_object.visible = false;
+            current_object.position.set( 0, 0, - 0.5 );
+        }
+        render();
     } );
 
     $( "#place-button" ).click( function () {
@@ -167,44 +167,67 @@ function init() {
 
 function loadModel( model ) {
 
-    new RGBELoader()
-        .setDataType( THREE.HalfFloatType )
-        .setPath( 'textures/' )
-        .load( 'photo_studio_01_1k.hdr', function ( texture ) {
-
-            envmap = pmremGenerator.fromEquirectangular( texture ).texture;
-
-            texture.flipY = false;
-            texture.premultiplyAlpha = false;
-
-            scene.environment = envmap;
-            texture.dispose();
-            pmremGenerator.dispose();
-            render();
-
-            var loader = new GLTFLoader().setPath( '3d/' );
-            loader.load( model + ".glb", function ( glb ) {
-
-                current_object = glb.scene;
-                scene.add( current_object );
-
-                var box = new THREE.Box3();
-                box.setFromObject( current_object );
-                box.center( controls.target );
-
-                controls.update();
-                render();
-
-            } );
-
+    if ( current_object ) {
+        scene.remove( current_object );
+        current_object.traverse( function ( child ) {
+            if ( child.geometry ) child.geometry.dispose();
+            if ( child.material ) {
+                if ( Array.isArray( child.material ) ) {
+                    child.material.forEach( function ( material ) {
+                        material.dispose();
+                    } );
+                } else {
+                    child.material.dispose();
+                }
+            }
         } );
+        current_object = null;
+    }
+
+    var loader = new GLTFLoader().setPath( 'models/' );
+    loader.load( model + ".glb", function ( glb ) {
+
+        current_object = glb.scene;
+        current_object.visible = !renderer.xr.isPresenting;
+        current_object.position.set( 0, 0, - 0.5 );
+        current_object.rotation.set( 0, 0, 0 );
+        if ( current_object.parent !== scene ) {
+            scene.add( current_object );
+        }
+
+        var box = new THREE.Box3();
+        box.setFromObject( current_object );
+        if ( !box.isEmpty() ) {
+            box.getCenter( controls.target );
+        }
+
+        controls.update();
+        render();
+
+    }, undefined, function ( error ) {
+        console.error( 'Erreur de chargement du modèle', model, error );
+    } );
 
 }
 
 function arPlace() {
-    if ( reticle.visible ) {
-        current_object.position.setFromMatrixPosition( reticle.matrix );
+    if ( !current_object ) {
+        loadModel( current_url );
+        return;
+    }
+
+    if ( reticle && reticle.visible ) {
+        if ( current_object.parent !== scene ) {
+            scene.add( current_object );
+        }
+
+        const worldPosition = new THREE.Vector3();
+        reticle.getWorldPosition( worldPosition );
+        current_object.position.copy( worldPosition );
+        current_object.position.y += 0.05;
         current_object.visible = true;
+        current_object.updateMatrixWorld( true );
+        render();
     }
 }
 
