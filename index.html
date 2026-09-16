@@ -6,6 +6,12 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 		<link type="text/css" rel="stylesheet" href="main.css">
 		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+<script>
+  eruda.init();
+</script>
+
+
 	</head>
 	<body>
 
@@ -31,7 +37,6 @@
 			let reticle;
 			let currentObject, controls;
 			let currentUrl = 'models/1.glb';
-			let loadRequestId = 0;
 
 			let hitTestSource = null;
 			let hitTestSourceRequested = false;
@@ -124,23 +129,16 @@
 
 			function loadModel( modelUrl ) {
 
-				const requestId = ++loadRequestId;
-
 				if ( currentObject ) scene.remove( currentObject );
 
 				new GLTFLoader().load( modelUrl, function ( glb ) {
-					if ( requestId !== loadRequestId ) return;
-
 					currentObject = glb.scene;
 					currentObject.visible = false;
 
 					const box = new THREE.Box3().setFromObject( currentObject );
 					const size = box.getSize( new THREE.Vector3() );
 					const maxSize = Math.max( size.x, size.y, size.z );
-					const displayScale = modelUrl === 'models/3.glb' ? 1.8 : modelUrl === 'models/5.glb' ? 0.3 : 1;
-					if ( maxSize > 0 ) {
-						currentObject.scale.setScalar( displayScale * 0.5 / maxSize );
-					}
+					if ( maxSize > 0 ) currentObject.scale.setScalar( 0.5 / maxSize );
 
 					scene.add( currentObject );
 					render();
@@ -235,7 +233,6 @@
 			<a class="ar-object" data-model="models/2.glb" href="#">Objet 2</a>
 			<a class="ar-object" data-model="models/3.glb" href="#">Objet 3</a>
 			<a class="ar-object" data-model="models/4.glb" href="#">Objet 4</a>
-			<a class="ar-object" data-model="models/5.glb" href="#">Objet 5 - Mignon</a>
 		</div>
 
 		<button class="menu-button" onclick="openNav()" aria-label="Ouvrir le menu">&#9776; <span>Objets</span></button>
