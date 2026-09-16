@@ -137,7 +137,7 @@
 					const box = new THREE.Box3().setFromObject( currentObject );
 					const size = box.getSize( new THREE.Vector3() );
 					const maxSize = Math.max( size.x, size.y, size.z );
-					const displayScale = modelUrl === 'models/3.glb' ? 1.8 : 1;
+					const displayScale = modelUrl === 'models/3.glb' ? 1.8 : modelUrl === 'models/5.glb' ? 0.35 : 1;
 					if ( maxSize > 0 ) currentObject.scale.setScalar( displayScale * 0.5 / maxSize );
 
 					scene.add( currentObject );
