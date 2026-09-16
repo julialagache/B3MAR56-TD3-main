@@ -84,17 +84,9 @@
 
 					if ( ! reticle.visible || ! currentObject ) return;
 
-					const object = currentObject.clone( true );
-					object.traverse( function ( child ) {
-						child.visible = true;
-					} );
+					const object = currentObject.clone();
 					object.position.setFromMatrixPosition( reticle.matrix );
-
-					const objectBox = new THREE.Box3().setFromObject( object );
-					const objectCenter = objectBox.getCenter( new THREE.Vector3() );
-					const placement = new THREE.Vector3().setFromMatrixPosition( reticle.matrix );
-					object.position.add( placement.sub( objectCenter ) );
-
+					object.visible = true;
 					scene.add( object );
 					render();
 
@@ -147,7 +139,6 @@
 					const maxSize = Math.max( size.x, size.y, size.z );
 					const displayScale = modelUrl === 'models/3.glb' ? 1.8 : modelUrl === 'models/5.glb' ? 0.3 : 1;
 					if ( maxSize > 0 ) {
-						currentObject.position.sub( box.getCenter( new THREE.Vector3() ) );
 						currentObject.scale.setScalar( displayScale * 0.5 / maxSize );
 					}
 
