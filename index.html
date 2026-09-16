@@ -31,6 +31,7 @@
 			let reticle;
 			let currentObject, controls;
 			let currentUrl = 'models/1.glb';
+			let loadRequestId = 0;
 
 			let hitTestSource = null;
 			let hitTestSourceRequested = false;
@@ -123,9 +124,13 @@
 
 			function loadModel( modelUrl ) {
 
+				const requestId = ++loadRequestId;
+
 				if ( currentObject ) scene.remove( currentObject );
 
 				new GLTFLoader().load( modelUrl, function ( glb ) {
+					if ( requestId !== loadRequestId ) return;
+
 					currentObject = glb.scene;
 					currentObject.visible = false;
 
