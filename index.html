@@ -85,10 +85,16 @@
 					if ( ! reticle.visible || ! currentObject ) return;
 
 					const object = currentObject.clone( true );
-					object.position.setFromMatrixPosition( reticle.matrix );
 					object.traverse( function ( child ) {
 						child.visible = true;
 					} );
+					object.position.setFromMatrixPosition( reticle.matrix );
+
+					const objectBox = new THREE.Box3().setFromObject( object );
+					const objectCenter = objectBox.getCenter( new THREE.Vector3() );
+					const placement = new THREE.Vector3().setFromMatrixPosition( reticle.matrix );
+					object.position.add( placement.sub( objectCenter ) );
+
 					scene.add( object );
 					render();
 
